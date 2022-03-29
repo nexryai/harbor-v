@@ -23,24 +23,31 @@ func execCmd(cmd string, arg string){
 	fmt.Printf("\x1b[34m%s\n", "[EXEC]")
 	fmt.Println("Command:", cmd, arg)
 
-	out, err := exec.Command(cmd, arg).Output()
+	args := strings.Split(arg, " ")
 
+	out, err := exec.Command(cmd, args...).Output()
+
+	fmt.Println(" ⌵\n ⌵")
+	msg := "===Stdout===\n" + (string(out))
+	msgInfo(msg)
 
 	if err != nil {
 		msg := "Failed to execute " + cmd + "\n 	>>> " + err.Error()
 		msgErr(msg)
-	} else {
-		fmt.Println(" ⌵\n ⌵\n ⌵")
-		msg := "===Stdout===\n" + (string(out))
-		msgInfo(msg)
+		os.Exit(1)
 	}
-
 
 	fmt.Printf("\x1b[0m%s\n", "\n")
 }
 
+func execInContainer(cmd string, container string){
+	execArg := "-D " + "/var/lib/machines/" + container + " " + cmd
+	execCmd("systemd-nspawn", execArg)
+}
+
+
 func main() {
-	msgInfo("Welcome to harbor-v !")
+	msgInfo("Welcome to Harbor-V !")
 
 	if os.Geteuid() != 0 {
 		msgErr("harbor-v MUST be run as root !!!")
@@ -49,7 +56,14 @@ func main() {
 
 	flag.Parse()
 	var dist = flag.Arg(0)
-	var username = flag.Arg(1)
+	var containerName = flag.Arg(1)
+	var username = flag.Arg(2)
+	var mvInterface = flag.Arg(3)
+
+	if len(mvInterface) == 0 {
+		msgErr("There are not enough arguments. \nusage: ./harbor debian.bullseye [container_name] [username] [network_interface_name_for_container]")
+		os.Exit(1)
+	}
 
 	if !strings.Contains(dist, ".") {
 		msgErr("The first argument must be in the form of \"[distribution-name].[distribution-version]\" \neg. \"debian.bullseye\" ")
@@ -60,15 +74,62 @@ func main() {
 	var distName = arr[0]
 	var distVersion = arr[1]
 
-	fmt.Println("Distribution:", distName, " Version:", distVersion, " User:", username)
+	//var nspawnPath = "/var/lib/machines"
+
+	fmt.Println("Distribution:", distName, " Version:", distVersion, " container_name:", containerName, " User:", username, " interface:", mvInterface)
 
 	if (distName == "debian") {
-		buildDebian(distVersion, username)
+		write_NetConf(containerName, mvInterface)
+		buildDebian(distVersion, containerName, username)
 	}
 
 }
 
-func buildDebian(debianVer string, username string) {
+
+
+func write_NetConf(containerName string, mvInterface string){
+
+	msgInfo("Generate a nspawn config file...")
+
+	var configFile_path = "/etc/systemd/nspawn/" + containerName + ".nspawn"
+	var configFile = "[Network]\nMACVLAN=" + mvInterface
+
+	file, err := os.Create(configFile_path)
+	if err != nil {
+		var msg = "Failed to create " + configFile_path
+		msgErr(msg)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(configFile)
+	if err != nil {
+		var msg = "Failed to write to " + configFile_path
+		msgErr(msg)
+		os.Exit(1)
+	}
+
+}
+
+func buildDebian(debianVer string, containerName string, username string) {
 	msgInfo("Build debian container...")
-	execCmd("zypper", "refresh")
+
+	machineDir := "/var/lib/machines/" + containerName
+
+	if err := os.Mkdir(machineDir, 0755); err != nil {
+		msg := "Failed to create directory for container \n 	>>>" + err.Error()
+        msgErr(msg)
+		os.Exit(1)
+    }
+
+	execArg := "--arch=amd64 " + debianVer + " " + machineDir + " https://ftp.riken.jp/Linux/debian/debian/"
+	execCmd("debootstrap", execArg)
+
+	execInContainer("passwd", containerName)
+
+	command := "adduser " + username
+	execInContainer(command, containerName)
+
+	command = "gpasswd -a " + username + " sudo"
+	execInContainer(command, containerName)
 }
