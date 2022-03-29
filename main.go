@@ -159,7 +159,7 @@ func buildDebian(debianVer string, containerName string, username string) {
 	command := "adduser " + username
 	execInContainer(command, containerName)
 
-	fmt.Println("Set up a user account. Please enter your password.")
+	fmt.Println("Set up your account. Please enter password.")
 	command = "gpasswd -a " + username + " sudo"
 	execInContainer(command, containerName)
 
