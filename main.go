@@ -150,15 +150,20 @@ func buildDebian(debianVer string, containerName string, username string) {
 		os.Exit(1)
     }
 
-	execArg := "--arch=amd64 " + debianVer + " " + machineDir + " https://ftp.riken.jp/Linux/debian/debian/"
+	execArg := "--arch=amd64 --include=systemd,dbus,openssh-server,ufw,sudo " + debianVer + " " + machineDir + " https://ftp.riken.jp/Linux/debian/debian/"
 	execCmd("debootstrap", execArg)
 
 	execInContainer("passwd", containerName)
 
+	fmt.Println("Set up a root account. Please enter your password.")
 	command := "adduser " + username
 	execInContainer(command, containerName)
 
+	fmt.Println("Set up a user account. Please enter your password.")
 	command = "gpasswd -a " + username + " sudo"
+	execInContainer(command, containerName)
+
+	command = "systemctl enable systemd-networkd"
 	execInContainer(command, containerName)
 
 }
