@@ -22,14 +22,16 @@ func msgErr(err string){
 func execCmd(cmd string, arg string){
 	fmt.Printf("\x1b[34m%s\n", "[EXEC]")
 	fmt.Println("Command:", cmd, arg)
+	fmt.Println(" ⌵\n ⌵\n===Stdout===")
+
 
 	args := strings.Split(arg, " ")
 
-	out, err := exec.Command(cmd, args...).Output()
+	command := exec.Command(cmd, args...)
+	command.Stdout = os.Stdout
+	command.Stdin = os.Stdin
+	err := command.Run()
 
-	fmt.Println(" ⌵\n ⌵")
-	msg := "===Stdout===\n" + (string(out))
-	msgInfo(msg)
 
 	if err != nil {
 		msg := "Failed to execute " + cmd + "\n 	>>> " + err.Error()
@@ -83,6 +85,8 @@ func main() {
 		buildDebian(distVersion, containerName, username)
 	}
 
+	configNetworkd(containerName, mvInterface)
+
 }
 
 
@@ -93,6 +97,30 @@ func write_NetConf(containerName string, mvInterface string){
 
 	var configFile_path = "/etc/systemd/nspawn/" + containerName + ".nspawn"
 	var configFile = "[Network]\nMACVLAN=" + mvInterface
+
+	file, err := os.Create(configFile_path)
+	if err != nil {
+		var msg = "Failed to create " + configFile_path
+		msgErr(msg)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(configFile)
+	if err != nil {
+		var msg = "Failed to write to " + configFile_path
+		msgErr(msg)
+		os.Exit(1)
+	}
+
+}
+
+func configNetworkd(containerName string, mvInterface string){
+
+	msgInfo("Generate a systemd-networkd config file...")
+
+	var configFile_path = "/var/lib/machines/" + containerName + "/etc/systemd/network/mv-" + mvInterface + ".network"
+	var configFile = "[Match]\nName=mv-" + mvInterface + "\n\n[Network]\nDHCP=yes"
 
 	file, err := os.Create(configFile_path)
 	if err != nil {
@@ -132,4 +160,5 @@ func buildDebian(debianVer string, containerName string, username string) {
 
 	command = "gpasswd -a " + username + " sudo"
 	execInContainer(command, containerName)
+
 }
